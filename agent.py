@@ -1,4 +1,12 @@
+import os
+
+import google.generativeai as genai
+from dotenv import load_dotenv
 from duckduckgo_search import DDGS
+
+# Load environment variables
+load_dotenv()
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 
 def search_web(query: str) -> str:
@@ -61,3 +69,92 @@ def calculate(expression: str) -> str:
             current_num = 0
 
     return str(sum(stack))
+
+
+class Agent:
+    def __init__(self):
+        self.model = genai.GenerativeModel("gemini-flash-latest")
+        self.chat = self.model.start_chat(history=[])
+
+        # THE INSTRUCTIONS
+        self.system_prompt = """
+        You are an AI Agent with access to tools.
+        You do NOT know the current date.
+        You do NOT know any real-time information (stock prices, weather, sports scores, etc).
+        
+        If the user asks for ANY real-time information, you MUST use the 'search_web' tool.
+
+        TOOLS AVAILABLE:
+        1. search_web(query): specific web search.
+        2. calculate(expression): math calculator (e.g., "12 * 50").
+
+        FORMAT INSTRUCTIONS:
+        To use a tool, you MUST respond in this exact format:
+        ACTION: tool_name("argument")
+        """
+
+        # Send system prompt
+        self.chat.send_message(self.system_prompt)
+
+    def ask(self, query):
+        # 1. Send user query to Gemini
+        print(f"👤 USER: {query}")
+        response = self.chat.send_message(query)
+        text = response.text.strip()
+
+        # 🔄 THE REACT LOOP
+        # We allow up to 5 turns. If it takes more, it's probably stuck.
+        for _ in range(5):
+            # Check if it wants to use a tool
+            if "ACTION:" in text:
+                print(f"🤖 AGENT WANTS TO ACT: {text}")
+
+                # --- PARSE ---
+                try:
+                    action_part = text.split("ACTION:")[1].strip()
+                    start_quote = action_part.find('"')
+                    end_quote = action_part.rfind('"')
+
+                    tool_name = action_part[:start_quote].split("(")[0].strip()
+                    argument = action_part[start_quote + 1 : end_quote]
+                except Exception:
+                    # If parsing fails, tell the AI
+                    text = self.chat.send_message(
+                        'SYSTEM: Error parsing action. Use format: ACTION: tool_name("arg")'
+                    ).text
+                    continue
+
+                # --- EXECUTE ---
+                tool_result = "Error: Tool not found"
+                if tool_name == "search_web":
+                    print(f"🌍 SEARCHING: {argument}")
+                    tool_result = search_web(argument)
+                elif tool_name == "calculate":
+                    print(f"🧮 CALCULATING: {argument}")
+                    tool_result = calculate(argument)
+
+                # Check for empty results
+                if not tool_result:
+                    tool_result = "No results found."
+
+                # --- OBSERVE (Feed back to AI) ---
+                print(f"🕵️ OBSERVATION: {tool_result[:60]}...")
+
+                # IMPORTANT: We overwrite 'text' with the NEW response from the AI
+                # This allows the loop to check "Does it want to act AGAIN?"
+                response = self.chat.send_message(f"OBSERVATION: {tool_result}")
+                text = response.text.strip()
+
+            else:
+                # No "ACTION:" found? The Agent is done thinking.
+                return text
+
+        return "I tried too many steps and gave up."
+
+
+if __name__ == "__main__":
+    agent = Agent()
+    # A question that requires 2 tools (search + math)
+    print("USER: If i buy 15 shares of Apple, how much will it costs?")
+    response = agent.ask("If i buy 15 shares of Apple, how much will it costs?")
+    print(f"Agent: {response}")
