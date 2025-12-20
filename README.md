@@ -35,7 +35,7 @@ The Agent follows a strict **Thought-Action-Observation** cycle:
 1.  **Clone the repository:**
 
     ```bash
-    git clone [https://github.com/bydelacruz/market-researcher-agent.git]
+    git clone [https://github.com/bydelacruz/market_researcher_agent.git]
     cd market-researcher-agent
     ```
 
