@@ -75,6 +75,7 @@ class Agent:
     def __init__(self):
         self.model = genai.GenerativeModel("gemini-flash-latest")
         self.chat = self.model.start_chat(history=[])
+        self.is_active = True  # To track if the agent is active
 
         # THE INSTRUCTIONS
         self.system_prompt = """
@@ -94,15 +95,23 @@ class Agent:
         """
 
         # Send system prompt
-        self.chat.send_message(self.system_prompt)
+        try:
+            self.chat.send_message(self.system_prompt)
+        except Exception as e:
+            print(f"⚠️ Error initializing Agent: {e}")
+            self.is_active = False  # Mark as broken
 
     def ask(self, query):
         # 1. Send user query to Gemini
         print(f"👤 USER: {query}")
-        response = self.chat.send_message(query)
-        text = response.text.strip()
 
-        # 🔄 THE REACT LOOP
+        try:
+            response = self.chat.send_message(query)
+            text = response.text.strip()
+        except Exception as e:
+            return f"⚠️ System Overload: My brain is tired (API Quota Exceeded). Please wait a minute and try again.\n\n(Error Detail: {e})"
+
+            # 🔄 THE REACT LOOP
         # We allow up to 5 turns. If it takes more, it's probably stuck.
         for _ in range(5):
             # Check if it wants to use a tool
@@ -119,9 +128,12 @@ class Agent:
                     argument = action_part[start_quote + 1 : end_quote]
                 except Exception:
                     # If parsing fails, tell the AI
-                    text = self.chat.send_message(
-                        'SYSTEM: Error parsing action. Use format: ACTION: tool_name("arg")'
-                    ).text
+                    try:
+                        text = self.chat.send_message(
+                            'SYSTEM: Error parsing action. Use format: ACTION: tool_name("arg")'
+                        ).text
+                    except Exception as e:
+                        return f"⚠️ System Overload: My brain is tired (API Quota Exceeded). Please wait a minute and try again.\n\n(Error Detail: {e})"
                     continue
 
                 # --- EXECUTE ---
@@ -142,8 +154,11 @@ class Agent:
 
                 # IMPORTANT: We overwrite 'text' with the NEW response from the AI
                 # This allows the loop to check "Does it want to act AGAIN?"
-                response = self.chat.send_message(f"OBSERVATION: {tool_result}")
-                text = response.text.strip()
+                try:
+                    response = self.chat.send_message(f"OBSERVATION: {tool_result}")
+                    text = response.text.strip()
+                except Exception as e:
+                    return f"⚠️ System Overload: My brain is tired (API Quota Exceeded). Please wait a minute and try again.\n\n(Error Detail: {e})"
 
             else:
                 # No "ACTION:" found? The Agent is done thinking.
@@ -157,4 +172,5 @@ if __name__ == "__main__":
     # A question that requires 2 tools (search + math)
     print("USER: If i buy 15 shares of Apple, how much will it costs?")
     response = agent.ask("If i buy 15 shares of Apple, how much will it costs?")
+    print(f"Agent: {response}")
     print(f"Agent: {response}")

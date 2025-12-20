@@ -11,6 +11,13 @@ if "agent" not in st.session_state:
     st.session_state.agent = Agent()
     st.session_state.messages = []  # To store the conversation history
 
+# CHECK AGENT HEALTH
+if not st.session_state.agent.is_active:
+    st.error(
+        "⚠️ System Overload: The AI Service is currently unavailable (API Quota Exceeded). Please try again in a few minutes."
+    )
+    st.stop()  # stop the app from running further
+
 # STEP 2: DISPLAY HISTORY
 # We loop through the "messages" list and print them on screen
 for msg in st.session_state.messages:
